@@ -4,15 +4,15 @@ This project can download any youtube video using the link of the video. Let me 
 
 * [📝 Requirments](#-Requirements)
 * [🌱 Install](#-install)
-* [💻 Usage (.env)](#%EF%B8%8F-usage)
-* [⚙️ Customization](#-manage-multiple-environments)
+* [💻 Usage](#-usage)
+* [⚙️ Customization (.env)](#-Customization)
 
 
 ## 📝 Requirements
 
 It is a node JS project so it is important to have node js installed on your system.
 
-- [] ***Node js and npm*** should be installed on your system to make this work.
+ ***Node js and npm*** should be installed on your system to make this work.
 
 
 
