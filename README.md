@@ -5,7 +5,7 @@ This project can download any youtube video using the link of the video. Let me 
 * [📝 Requirments](#-Requirements)
 * [🌱 Install](#-install)
 * [💻 Usage](#-usage)
-* [⚙️ Customization (.env)](#-Customization)
+* [⚙️ Customization](#-Customization)
 
 
 ## 📝 Requirements
@@ -30,13 +30,6 @@ This will install all the dependencies required for the project to run.
 Or installing with yarn? `yarn add dotenv`
 
 ## 💻 Usage
-
-<a href="https://www.youtube.com/watch?v=YtkZR0NFd1g">
-<div align="right">
-<img src="https://img.youtube.com/vi/YtkZR0NFd1g/hqdefault.jpg" alt="how to use dotenv video tutorial" align="right" width="330" />
-<img src="https://simpleicons.vercel.app/youtube/ff0000" alt="youtube/@dotenvorg" align="right" width="24" />
-</div>
-</a>
 
 Now that the installation is done, you can start using the application to download any youtube video. Also as you have globally installed the project you can access it globally by running the commnand:
 
