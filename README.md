@@ -2,17 +2,17 @@
 
 This project can download any youtube video using the link of the video. Let me show you how to install and make it work.
 
-* [📝 Requirments](#-Requirements)
+* [📝 Requirments](#-requirements)
 * [🌱 Install](#-install)
 * [💻 Usage](#-usage)
-* [⚙️ Customization](#-Customization)
+* [⚙️ Customization](#-customization)
 
 
 ## 📝 Requirements
 
 It is a node JS project so it is important to have node js installed on your system.
 
- ***Node js and npm*** should be installed on your system to make this work.
+ >***Node js and npm*** should be installed on your system to make this work.
 
 
 
@@ -45,7 +45,7 @@ node ./index.js
 Now you can enter the youtube link and select the desired quality and the download will begin, it will download the video on downloads folder.
 
 
-## ⚙️ Customization
+## ⚙ Customization
 
 Although you can download the youtube video directly without having to customize the project properties, but you can still cusotmize project to your own preferences. Here is how you can do this :
 
