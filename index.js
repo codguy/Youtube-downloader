@@ -47,19 +47,24 @@ function getVideoLink() {
 	});
 }
 
+/**
+ * Fetches video information, filters and categorizes formats,
+ * and then prompts the user to select a format for download.
+ * @param {string} url - The YouTube video URL.
+ */
 async function download(url) {
 	const spinner = ora(`Fetching info for video: ${chalk.green(url)}`).start();
 	try {
-		let videID = ytdl.getURLVideoID(url);
-		// Get Info
+		const videID = ytdl.getURLVideoID(url);
+		// Get video information
 		const info = await ytdl.getInfo(videID);
 		spinner.succeed(
 			`Info fetched for: ${chalk.cyan(info.videoDetails.title)}`
 		);
 
-		// Showing all the formats of the video
-		console.log('uploaded by:', info.videoDetails.author.name, '\n');
+		console.log('Uploaded by:', info.videoDetails.author.name, '\n');
 
+		// Filter out duplicate formats based on itag
 		const uniqueFormats = [];
 		const seenItags = new Set();
 		info.formats.forEach(format => {
@@ -69,13 +74,19 @@ async function download(url) {
 			}
 		});
 
+		// Categorize formats
 		const audioOnlyFormats = uniqueFormats.filter(
 			format => format.hasAudio && !format.hasVideo
 		);
 		const videoWithAudioFormats = uniqueFormats.filter(
 			format => format.hasAudio && format.hasVideo
 		);
+		// Note: Video-only formats (format.hasVideo && !format.hasAudio) are intentionally excluded.
 
+		/**
+		 * Prints a single format line to the console.
+		 * @param {object} format - The format object from ytdl-core.
+		 */
 		const printFormatLine = format => {
 			let mimeType = format.mimeType.split('/');
 			console.log(
@@ -129,6 +140,9 @@ async function download(url) {
 		// Create a new info object with only the unique, selectable formats for selectFormat
 		const filteredInfo = { ...info, formats: allSelectableFormats };
 
+		// Create a new info object with only the unique, selectable formats for selectFormat
+		const filteredInfo = { ...info, formats: allSelectableFormats };
+
 		await selectFormat(filteredInfo, url);
 	} catch (error) {
 		spinner.fail('Error fetching video info.');
@@ -158,26 +172,45 @@ async function download(url) {
 	}
 }
 
+/**
+ * Prompts the user to select a format by its Itag and proceeds to configure and download.
+ * @param {object} info - The video info object, expected to contain a `formats` array
+ *                        that has been filtered and categorized.
+ * @param {string} url - The YouTube video URL.
+ */
 async function selectFormat(info, url) {
 	readline.question('\nEnter Itag for Quality : ', itag_id => {
+		// Find the selected format from the (already filtered) list
 		let quality_format = info.formats.filter(format => {
 			return format.itag == itag_id;
 		});
 
 		if (quality_format.length > 0) {
 			console.log(chalk.gray('\nProcessing ...\n'));
+			// Proceed to configure and download with the chosen format
 			configureFormat(info, quality_format[0], itag_id, url);
 		} else {
-			console.log(chalk.red('\nPlease enter a valid itag for Quality'));
-			selectFormat(info, url);
+			console.log(chalk.red('\nPlease enter a valid itag from the list above.'));
+			selectFormat(info, url); // Re-prompt with the same filtered list
 		}
 	});
 }
 
+/**
+ * Configures file path and name, then initiates the file creation and download process.
+ * @param {object} info - The general video info object.
+ * @param {object} format_data - The specific format object selected by the user.
+ * @param {string} itag_id - The Itag ID of the selected format (used for ytdl filtering).
+ * @param {string} url - The YouTube video URL.
+ */
 function configureFormat(info, format_data, itag_id, url) {
-	let mimeType = format_data.mimeType.split('/');
-	let file_title = info.videoDetails.title.replace(/[^a-zA-Z0-9\w\s]/g, '');
+	let mimeType = format_data.mimeType.split('/'); // e.g., ['video', 'mp4'] or ['audio', 'webm']
+	// Sanitize video title for use in filename
+	let file_title = info.videoDetails.title.replace(/[^a-zA-Z0-9\w\s.-]/g, '_').replace(/\s+/g, ' ');
 
+	// Determine download path based on environment variables or a default
+	// Default path structure: C:/Users/satna/Downloads/[video_or_audio]/
+	// TODO: Consider making the default path more generic or user-configurable.
 	let path = `C:/Users/satna/Downloads/${mimeType[0]}/`;
 	if (mimeType[0] == 'audio') {
 		path = process.env.AUDIO_DOWNLOAD_DESTINATION ?? path;
@@ -189,39 +222,51 @@ function configureFormat(info, format_data, itag_id, url) {
 		path +
 		file_title +
 		'_' +
-		format_data.qualityLabel +
+		(format_data.qualityLabel || 'audio') + // Use 'audio' if qualityLabel is null (e.g. for some audio formats)
 		'.' +
 		format_data.container;
+
+	// Ensure download directory exists, then create the file
 	fs.access(path, error => {
-		if (error) {
-			fs.mkdir(path, error => {
+		if (error) { // Directory does not exist
+			fs.mkdir(path, { recursive: true }, error => { // Create directory recursively
 				if (error) {
-					console.err(error);
+					console.error(chalk.red(`Error creating directory: ${error.message}`));
+					getVideoLink(); // Or some other error handling / retry logic
 				} else {
 					createFile(file_name, itag_id, url);
 				}
 			});
-		} else {
+		} else { // Directory already exists
 			createFile(file_name, itag_id, url);
 		}
 	});
 }
 
+/**
+ * Creates the file stream and starts the download process using ytdl.
+ * @param {string} file_name - The full path and name of the file to be created.
+ * @param {string} itag_id - The Itag ID of the selected format.
+ * @param {string} url - The YouTube video URL.
+ */
 function createFile(file_name, itag_id, url) {
 	let outputFilePath = path.resolve(file_name);
-	// Create a write stream to save the video file
+	// Create a write stream to save the video/audio file
 	const outputStream = fs.createWriteStream(outputFilePath);
-	// Download the video file
-	const video = ytdl(url, {
-		filter: function (format) {
-			return format.itag == itag_id;
-		}
+
+	// Download the video/audio file
+	const stream = ytdl(url, {
+		filter: format => format.itag == itag_id
 	});
-	video.pipe(outputStream);
-	processDownload(video);
+	stream.pipe(outputStream);
+	processDownload(stream); // Pass the ytdl stream to processDownload
 }
 
-function processDownload(video) {
+/**
+ * Sets up progress bar and handles events for the download stream.
+ * @param {ReadableStream} stream - The ytdl download stream.
+ */
+function processDownload(stream) {
 	let starttime;
 	const bar1 = new cliProgress.SingleBar(
 		{
