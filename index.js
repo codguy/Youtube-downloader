@@ -17,18 +17,19 @@ const chalk = require('chalk');
 const fs = require('fs');
 const cliProgress = require('cli-progress');
 const readlineEX = require('readline');
+const ora = require('ora'); // Added ora
 
-require('dotenv').config()
+require('dotenv').config();
 
 const input = cli.input;
 const flags = cli.flags;
 const { clear, debug } = flags;
 
-let audioFilter = (process.env.AUDIO_FILTER == 'false') ? true : false;
+let audioFilter = process.env.AUDIO_FILTER == 'false' ? true : false;
 
 let readline = readlineEX.createInterface({
-    input: process.stdin,
-    output: process.stdout
+	input: process.stdin,
+	output: process.stdout
 });
 
 (async () => {
@@ -37,132 +38,229 @@ let readline = readlineEX.createInterface({
 
 	debug && log(flags);
 
-    getVideoLink();
+	getVideoLink();
 })();
 
-
 function getVideoLink() {
-    readline.question('Enter video Link to download : ', async url => {
-        console.log(`Fetching info for video : ` + chalk.green(url));
-        await download(url);
-    });
+	readline.question('Enter video Link to download : ', async url => {
+		await download(url);
+	});
 }
 
-
 async function download(url) {
-    let videID = ytdl.getURLVideoID(url);
+	const spinner = ora(`Fetching info for video: ${chalk.green(url)}`).start();
+	try {
+		let videID = ytdl.getURLVideoID(url);
+		// Get Info
+		const info = await ytdl.getInfo(videID);
+		spinner.succeed(
+			`Info fetched for: ${chalk.cyan(info.videoDetails.title)}`
+		);
 
-    // Get Info
-    ytdl.getInfo(videID).then(async (info) => {
-        // Showing all the formats of the video
-        console.log('\ntitle:', chalk.cyan(info.videoDetails.title));
-        console.log('uploaded by:', info.videoDetails.author.name, "\n");
+		// Showing all the formats of the video
+		console.log('uploaded by:', info.videoDetails.author.name, '\n');
 
-        console.log("Itag" + "\t" + " Type" + "\t" + "Format" + "\t" + "Quality" + "\t" + "Audio" + "\t" + "Video");
-        info.formats.forEach(format => {
-            if ((process.env.ONLY_AUDIO == 'true') && format.hasAudio && !format.hasVideo) {
-                
-                let mimeType = format.mimeType.split("/");
-                console.log(format.itag + "\t" + mimeType[0] + "\t" + format.container + "\t" + chalk.green(format.qualityLabel) + "\t" + chalk.grey(format.hasAudio) + "\t" + chalk.grey(format.hasVideo));
-            } else if (audioFilter || format.hasAudio) {
+		console.log(
+			'Itag' +
+				'\t' +
+				' Type' +
+				'\t' +
+				'Format' +
+				'\t' +
+				'Quality' +
+				'\t' +
+				'Audio' +
+				'\t' +
+				'Video'
+		);
+		info.formats.forEach(format => {
+			if (
+				process.env.ONLY_AUDIO == 'true' &&
+				format.hasAudio &&
+				!format.hasVideo
+			) {
+				let mimeType = format.mimeType.split('/');
+				console.log(
+					format.itag +
+						'\t' +
+						mimeType[0] +
+						'\t' +
+						format.container +
+						'\t' +
+						chalk.green(format.qualityLabel) +
+						'\t' +
+						chalk.grey(format.hasAudio) +
+						'\t' +
+						chalk.grey(format.hasVideo)
+				);
+			} else if (audioFilter || format.hasAudio) {
+				let mimeType = format.mimeType.split('/');
+				console.log(
+					format.itag +
+						'\t' +
+						mimeType[0] +
+						'\t' +
+						format.container +
+						'\t' +
+						chalk.green(format.qualityLabel) +
+						'\t' +
+						chalk.grey(format.hasAudio) +
+						'\t' +
+						chalk.grey(format.hasVideo)
+				);
+			}
+		});
+		await selectFormat(info, url);
+	} catch (error) {
+		spinner.fail('Error fetching video info.');
+		console.error(chalk.red(`\nError: ${error.message}`));
 
-                let mimeType = format.mimeType.split("/");
-                console.log(format.itag + "\t" + mimeType[0] + "\t" + format.container + "\t" + chalk.green(format.qualityLabel) + "\t" + chalk.grey(format.hasAudio) + "\t" + chalk.grey(format.hasVideo));
-            }
-        });
-        await selectFormat(info, url);
-
-    });
-
+		if (process.stdin.isTTY) {
+			// Optionally, prompt to try again or exit if running in an interactive terminal
+			readline.question(
+				'Would you like to try another URL? (y/n): ',
+				answer => {
+					if (answer.toLowerCase() === 'y') {
+						getVideoLink();
+					} else {
+						console.log(chalk.blue('Exiting.'));
+						readline.close(); // Close readline before exiting
+						process.exit(0);
+					}
+				}
+			);
+		} else {
+			// If not a TTY (e.g., piped input), just exit after error
+			console.log(
+				chalk.blue('Exiting due to error in non-interactive mode.')
+			);
+			process.exit(1); // Exit with error code 1
+		}
+	}
 }
 
 async function selectFormat(info, url) {
-    readline.question('\nEnter Itag for Quality : ', itag_id => {
+	readline.question('\nEnter Itag for Quality : ', itag_id => {
+		let quality_format = info.formats.filter(format => {
+			return format.itag == itag_id;
+		});
 
-        let quality_format = info.formats.filter(format => {
-            return format.itag == itag_id;
-        });
-
-        if (quality_format.length > 0) {
-            console.log(chalk.gray("\nProcessing ...\n"));
-            configureFormat(info, quality_format[0], itag_id, url);
-        } else {
-            console.log(chalk.red("\nPlease enter a valid itag for Quality"));
-            selectFormat(info, url);
-        }
-    });
+		if (quality_format.length > 0) {
+			console.log(chalk.gray('\nProcessing ...\n'));
+			configureFormat(info, quality_format[0], itag_id, url);
+		} else {
+			console.log(chalk.red('\nPlease enter a valid itag for Quality'));
+			selectFormat(info, url);
+		}
+	});
 }
 
 function configureFormat(info, format_data, itag_id, url) {
-    let mimeType = format_data.mimeType.split("/");
-    let file_title = info.videoDetails.title.replace(/[^a-zA-Z0-9\w\s]/g, '');
+	let mimeType = format_data.mimeType.split('/');
+	let file_title = info.videoDetails.title.replace(/[^a-zA-Z0-9\w\s]/g, '');
 
-    let path = `C:/Users/satna/Downloads/${mimeType[0]}/`;
-    if (mimeType[0] == "audio") {
-        path = process.env.AUDIO_DOWNLOAD_DESTINATION ?? path;
-    } else {
-        path = process.env.VIDEO_DOWNLOAD_DESTINATION ?? path;
-    }
+	let path = `C:/Users/satna/Downloads/${mimeType[0]}/`;
+	if (mimeType[0] == 'audio') {
+		path = process.env.AUDIO_DOWNLOAD_DESTINATION ?? path;
+	} else {
+		path = process.env.VIDEO_DOWNLOAD_DESTINATION ?? path;
+	}
 
-    let file_name = path + file_title + "_" + format_data.qualityLabel + "." + format_data.container;
-    fs.access(path, (error) => {
-        if (error) {
-            fs.mkdir(path, (error) => {
-                if (error) {
-                    console.err(error);
-                } else {
-                    createFile(file_name, itag_id, url);
-                }
-            });
-        } else {
-            createFile(file_name, itag_id, url);
-        }
-    });
+	let file_name =
+		path +
+		file_title +
+		'_' +
+		format_data.qualityLabel +
+		'.' +
+		format_data.container;
+	fs.access(path, error => {
+		if (error) {
+			fs.mkdir(path, error => {
+				if (error) {
+					console.err(error);
+				} else {
+					createFile(file_name, itag_id, url);
+				}
+			});
+		} else {
+			createFile(file_name, itag_id, url);
+		}
+	});
 }
 
 function createFile(file_name, itag_id, url) {
-    let outputFilePath = path.resolve(file_name);
-    // Create a write stream to save the video file
-    const outputStream = fs.createWriteStream(outputFilePath);
-    // Download the video file
-    const video = ytdl(url, {
-        filter: function (format) {
-            return format.itag == itag_id;
-        }
-    });
-    video.pipe(outputStream);
-    processDownload(video);
+	let outputFilePath = path.resolve(file_name);
+	// Create a write stream to save the video file
+	const outputStream = fs.createWriteStream(outputFilePath);
+	// Download the video file
+	const video = ytdl(url, {
+		filter: function (format) {
+			return format.itag == itag_id;
+		}
+	});
+	video.pipe(outputStream);
+	processDownload(video);
 }
 
 function processDownload(video) {
-    let starttime;
-    const bar1 = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
-    video.once('response', () => {
-        starttime = Date.now();
+	let starttime;
+	const bar1 = new cliProgress.SingleBar(
+		{
+			format: `Downloading | ${chalk.cyan(
+				'{bar}'
+			)} | {percentage}% || {downloadedMb}MB / {totalMb}MB || ETA: {etaFormatted} || Duration: {durationFormatted}`,
+			barCompleteChar: '\u2588',
+			barIncompleteChar: '\u2591',
+			hideCursor: true
+		},
+		cliProgress.Presets.shades_classic
+	);
 
-        bar1.start(100, 0);
-    });
+	video.once('response', res => {
+		starttime = Date.now();
+		// totalBytes will be available in res.headers['content-length']
+		// However, ytdl 'progress' event already provides total, so we use that.
+		// For this bar, we set total to 100 (for percentage)
+		bar1.start(100, 0, {
+			downloadedMb: '0.00',
+			totalMb: '0.00',
+			etaFormatted: '0s',
+			durationFormatted: '0s'
+		});
+	});
 
-    video.on('progress', (chunkLength, downloaded, total) => {
+	video.on('progress', (chunkLength, downloaded, total) => {
+		const percent = downloaded / total;
+		const downloadedMb = (downloaded / 1024 / 1024).toFixed(2);
+		const totalMb = (total / 1024 / 1024).toFixed(2);
 
-        const percent = downloaded / total;
-        const downloadedSeconds = (Date.now() - starttime) / 1000;
-        const downloadedMinutes = downloadedSeconds / 60;
-        const estimatedDownloadTime = (downloadedMinutes / percent) - downloadedMinutes;
+		const elapsedSeconds = (Date.now() - starttime) / 1000;
+		const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+		const elapsedSecs = Math.floor(elapsedSeconds % 60);
+		const durationFormatted = `${elapsedMinutes}m ${elapsedSecs}s`;
 
-        bar1.update(parseInt(percent * 100));
-        readlineEX.cursorTo(process.stdout, 0);
-        process.stdout.write(`\n${(percent * 100).toFixed(2)}% downloaded `);
-        process.stdout.write(`(${(downloaded / 1024 / 1024).toFixed(2)}MB of ${(total / 1024 / 1024).toFixed(2)}MB)\n`);
-        process.stdout.write(`running for: ${parseInt(downloadedMinutes)} min ${parseInt(downloadedSeconds % 60)} sec`);
-        process.stdout.write(`, estimated time left: ${parseInt(estimatedDownloadTime)} min ${parseInt((estimatedDownloadTime * 60) % 60)} sec`);
-        readlineEX.moveCursor(process.stdout, 0, -2);
+		let etaFormatted = 'N/A';
+		if (percent > 0 && percent < 1) {
+			const etaTotalSeconds = elapsedSeconds / percent - elapsedSeconds;
+			const etaMinutes = Math.floor(etaTotalSeconds / 60);
+			const etaSecs = Math.floor(etaTotalSeconds % 60);
+			etaFormatted = `${etaMinutes}m ${etaSecs}s`;
+		} else if (percent === 1) {
+			etaFormatted = '0s';
+		}
 
-    });
+		bar1.update(Math.floor(percent * 100), {
+			downloadedMb,
+			totalMb,
+			etaFormatted,
+			durationFormatted
+		});
+	});
 
-    video.on('end', () => {
-        bar1.stop();
-        console.log(chalk.green("\n\nDownload Completed!"));
-        process.exit(0);
-    });
+	video.on('end', () => {
+		bar1.update(100); // Ensure bar is full on completion
+		bar1.stop();
+		console.log(chalk.green('\nDownload Completed!'));
+		process.exit(0);
+	});
 }
