@@ -60,57 +60,76 @@ async function download(url) {
 		// Showing all the formats of the video
 		console.log('uploaded by:', info.videoDetails.author.name, '\n');
 
-		console.log(
-			'Itag' +
-				'\t' +
-				' Type' +
-				'\t' +
-				'Format' +
-				'\t' +
-				'Quality' +
-				'\t' +
-				'Audio' +
-				'\t' +
-				'Video'
-		);
+		const uniqueFormats = [];
+		const seenItags = new Set();
 		info.formats.forEach(format => {
-			if (
-				process.env.ONLY_AUDIO == 'true' &&
-				format.hasAudio &&
-				!format.hasVideo
-			) {
-				let mimeType = format.mimeType.split('/');
-				console.log(
-					format.itag +
-						'\t' +
-						mimeType[0] +
-						'\t' +
-						format.container +
-						'\t' +
-						chalk.green(format.qualityLabel) +
-						'\t' +
-						chalk.grey(format.hasAudio) +
-						'\t' +
-						chalk.grey(format.hasVideo)
-				);
-			} else if (audioFilter || format.hasAudio) {
-				let mimeType = format.mimeType.split('/');
-				console.log(
-					format.itag +
-						'\t' +
-						mimeType[0] +
-						'\t' +
-						format.container +
-						'\t' +
-						chalk.green(format.qualityLabel) +
-						'\t' +
-						chalk.grey(format.hasAudio) +
-						'\t' +
-						chalk.grey(format.hasVideo)
-				);
+			if (!seenItags.has(format.itag)) {
+				uniqueFormats.push(format);
+				seenItags.add(format.itag);
 			}
 		});
-		await selectFormat(info, url);
+
+		const audioOnlyFormats = uniqueFormats.filter(
+			format => format.hasAudio && !format.hasVideo
+		);
+		const videoWithAudioFormats = uniqueFormats.filter(
+			format => format.hasAudio && format.hasVideo
+		);
+
+		const printFormatLine = format => {
+			let mimeType = format.mimeType.split('/');
+			console.log(
+				format.itag +
+					'\t' +
+					mimeType[0] +
+					'\t' +
+					format.container +
+					'\t' +
+					chalk.green(format.qualityLabel || 'N/A') +
+					'\t' +
+					chalk.grey(format.hasAudio) +
+					'\t' +
+					chalk.grey(format.hasVideo)
+			);
+		};
+
+		const tableHeader =
+			'Itag' +
+			'\t' +
+			' Type' +
+			'\t' +
+			'Format' +
+			'\t' +
+			'Quality' +
+			'\t' +
+			'Audio' +
+			'\t' +
+			'Video';
+
+		if (audioOnlyFormats.length > 0) {
+			console.log(chalk.bold.yellow('\n--- Audio Only ---'));
+			console.log(tableHeader);
+			audioOnlyFormats.forEach(printFormatLine);
+		}
+
+		if (videoWithAudioFormats.length > 0) {
+			console.log(chalk.bold.yellow('\n--- Video with Audio ---'));
+			console.log(tableHeader);
+			videoWithAudioFormats.forEach(printFormatLine);
+		}
+
+		// Pass the unique formats to selectFormat
+		const allSelectableFormats = [...audioOnlyFormats, ...videoWithAudioFormats];
+		if (allSelectableFormats.length === 0) {
+			console.log(chalk.red('No suitable audio or video with audio formats found.'));
+			getVideoLink(); // Or handle error appropriately
+			return;
+		}
+
+		// Create a new info object with only the unique, selectable formats for selectFormat
+		const filteredInfo = { ...info, formats: allSelectableFormats };
+
+		await selectFormat(filteredInfo, url);
 	} catch (error) {
 		spinner.fail('Error fetching video info.');
 		console.error(chalk.red(`\nError: ${error.message}`));
